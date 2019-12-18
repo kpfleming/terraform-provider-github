@@ -1,7 +1,6 @@
 package github
 
 import (
-	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -18,7 +17,9 @@ func resourceGithubUser() *schema.Resource {
 		Update: nil,
 		Delete: resourceGithubUserDelete,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				return []*schema.ResourceData{d}, nil
+			},
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -40,18 +41,16 @@ func resourceGithubUserCreate(d *schema.ResourceData, meta interface{}) error {
 
 func resourceGithubUserRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Organization).client
+
 	var user *github.User
 	var resp *github.Response
 	var err error
 
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
-	if !d.IsNewResource() {
-		ctx = context.WithValue(ctx, ctxEtag, d.Get("etag").(string))
-	}
+	ctx := prepareResourceContext(d)
 
-	id, err := strconv.ParseInt(d.Id(), 10, 64)
-
-	if err != nil {
+	// this test determines if the resource is new, by testing if one of the
+	// computed attributes has ever had a value set
+	if _, set := d.GetOk("username"); !set {
 		// when the resource is new, it will have just been imported, and the Id
 		// will be a string containing the username, not a numeric Id
 		log.Printf("[DEBUG] Reading user: %s", d.Id())
@@ -59,6 +58,11 @@ func resourceGithubUserRead(d *schema.ResourceData, meta interface{}) error {
 	} else {
 		// the resource is not new, so the username->Id transformation has already been
 		// performed
+		id, err := strconv.ParseInt(d.Id(), 10, 64)
+		if err != nil {
+			return unconvertibleIdErr(d.Id(), err)
+		}
+		
 		log.Printf("[DEBUG] Reading user: %d", id)
 		user, resp, err = client.Users.GetByID(ctx, id)
 	}
