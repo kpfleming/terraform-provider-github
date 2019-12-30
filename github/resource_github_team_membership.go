@@ -1,7 +1,6 @@
 package github
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -57,7 +56,8 @@ func resourceGithubTeamMembershipCreateOrUpdate(d *schema.ResourceData, meta int
 	if err != nil {
 		return unconvertibleIdErr(teamIdString, err)
 	}
-	ctx := context.Background()
+
+	ctx := prepareResourceContext(d)
 
 	username := d.Get("username").(string)
 	role := d.Get("role").(string)
@@ -90,10 +90,8 @@ func resourceGithubTeamMembershipRead(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return unconvertibleIdErr(teamIdString, err)
 	}
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
-	if !d.IsNewResource() {
-		ctx = context.WithValue(ctx, ctxEtag, d.Get("etag").(string))
-	}
+
+	ctx := prepareResourceContext(d)
 
 	log.Printf("[DEBUG] Reading team membership: %s/%s", teamIdString, username)
 	membership, resp, err := client.Teams.GetTeamMembership(ctx,
@@ -132,7 +130,8 @@ func resourceGithubTeamMembershipDelete(d *schema.ResourceData, meta interface{}
 		return unconvertibleIdErr(teamIdString, err)
 	}
 	username := d.Get("username").(string)
-	ctx := context.WithValue(context.Background(), ctxId, d.Id())
+
+	ctx := prepareResourceContext(d)
 
 	log.Printf("[DEBUG] Deleting team membership: %s/%s", teamIdString, username)
 	_, err = client.Teams.RemoveTeamMembership(ctx, teamId, username)
