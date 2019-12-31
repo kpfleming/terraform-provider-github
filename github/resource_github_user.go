@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/go-github/v28/github"
 	"github.com/hashicorp/terraform/helper/schema"
 )
 
@@ -17,9 +16,7 @@ func resourceGithubUser() *schema.Resource {
 		Update: nil,
 		Delete: resourceGithubUserDelete,
 		Importer: &schema.ResourceImporter{
-			State: func(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
-				return []*schema.ResourceData{d}, nil
-			},
+			State: resourceGithubUserImport,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -42,49 +39,35 @@ func resourceGithubUserCreate(d *schema.ResourceData, meta interface{}) error {
 func resourceGithubUserRead(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Organization).client
 
-	var user *github.User
-	var resp *github.Response
-	var err error
-
 	ctx := prepareResourceContext(d)
 
-	// this test determines if the resource is new, by testing if one of the
-	// computed attributes has ever had a value set
-	if _, set := d.GetOk("username"); !set {
-		// when the resource is new, it will have just been imported, and the Id
-		// will be a string containing the username, not a numeric Id
-		log.Printf("[DEBUG] Reading user: %s", d.Id())
-		user, resp, err = client.Users.Get(ctx, d.Id())
-	} else {
-		// the resource is not new, so the username->Id transformation has already been
-		// performed
-		id, err := strconv.ParseInt(d.Id(), 10, 64)
-		if err != nil {
-			return unconvertibleIdErr(d.Id(), err)
-		}
-		
-		log.Printf("[DEBUG] Reading user: %d", id)
-		user, resp, err = client.Users.GetByID(ctx, id)
-	}
-
+	id, err := strconv.ParseInt(d.Id(), 10, 64)
 	if err != nil {
-		if ghErr, ok := err.(*github.ErrorResponse); ok {
-			if ghErr.Response.StatusCode == http.StatusNotModified {
-				return nil
-			}
-			if ghErr.Response.StatusCode == http.StatusNotFound {
-				log.Printf("[WARN] Removing user %s from state because it no longer exists in GitHub",
-					d.Id())
-				d.SetId("")
-				return nil
-			}
-		}
-		return err
+		return unconvertibleIdErr(d.Id(), err)
 	}
 
-	d.SetId(strconv.FormatInt(*user.ID, 10))
-	d.Set("etag", resp.Header.Get("ETag"))
-	d.Set("username", user.Login)
+	log.Printf("[DEBUG] Reading user by ID: %d", id)
+	user, resp, err := client.Users.GetByID(ctx, id)
+
+	if resp.StatusCode == http.StatusNotFound {
+		log.Printf("[WARN] Removing user %s from state because it no longer exists in GitHub",
+			d.Id())
+		d.SetId("")
+		return nil
+	}
+
+	if resp.StatusCode != http.StatusNotModified {
+		if err != nil {
+			return err
+		}
+
+		d.Set("etag", resp.Header.Get("ETag"))
+		d.Set("username", user.Login)
+	}
+
+	username := d.Get("username").(string)
+	log.Printf("[DEBUG] Adding user %s/%d to cache", username, id)
+	meta.(*Organization).UserMap.AddUser(username, id)
 
 	return nil
 }
@@ -92,4 +75,27 @@ func resourceGithubUserRead(d *schema.ResourceData, meta interface{}) error {
 func resourceGithubUserDelete(d *schema.ResourceData, meta interface{}) error {
 	// this operation cannot be performed, but should be silently ignored
 	return nil
+}
+
+func resourceGithubUserImport(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	client := meta.(*Organization).client
+	ctx := prepareResourceContext(d)
+
+	userString := d.Id()
+
+	log.Printf("[DEBUG] Reading user: %s", userString)
+	// Attempt to parse the string as a numeric ID
+	userId, err := strconv.ParseInt(userString, 10, 64)
+	if err != nil {
+		// It wasn't a numeric ID, try to use it as a username
+		if user, _, err := client.Users.Get(ctx, userString); err != nil {
+			return nil, err
+		} else {
+			userId = *user.ID
+		}
+	}
+
+	d.SetId(strconv.FormatInt(userId, 10))
+
+	return []*schema.ResourceData{d}, nil
 }

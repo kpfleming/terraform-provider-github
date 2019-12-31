@@ -24,7 +24,7 @@ func resourceGithubTeamRepository() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				ForceNew:     true,
-				ValidateFunc: validateTeamIDFunc,
+				ValidateFunc: validateNumericIDFunc,
 			},
 			"repository": {
 				Type:     schema.TypeString,

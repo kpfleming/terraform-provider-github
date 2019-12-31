@@ -94,14 +94,14 @@ func (e *unconvertibleIdError) Error() string {
 		e.OriginalId, e.OriginalError.Error())
 }
 
-func validateTeamIDFunc(v interface{}, keyName string) (we []string, errors []error) {
-	teamIDString, ok := v.(string)
+func validateNumericIDFunc(v interface{}, keyName string) (we []string, errors []error) {
+	IDString, ok := v.(string)
 	if !ok {
 		return nil, []error{fmt.Errorf("expected type of %s to be string", keyName)}
 	}
-	// Check that the team ID can be converted to an int
-	if _, err := strconv.ParseInt(teamIDString, 10, 64); err != nil {
-		return nil, []error{unconvertibleIdErr(teamIDString, err)}
+	// Check that the ID can be converted to an int
+	if _, err := strconv.ParseInt(IDString, 10, 64); err != nil {
+		return nil, []error{unconvertibleIdErr(IDString, err)}
 	}
 
 	return
