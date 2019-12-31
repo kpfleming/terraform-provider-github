@@ -19,7 +19,15 @@ func resourceGithubTeamMembership() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			State: resourceGithubTeamMembershipImport,
 		},
+		StateUpgraders: []schema.StateUpgrader{
+			{
+				Type:    resourceGithubTeamMembershipV0().CoreConfigSchema().ImpliedType(),
+				Upgrade: resourceGithubTeamMembershipStateUpgradeV0,
+				Version: 0,
+			},
+		},
 
+		SchemaVersion: 1,
 		Schema: map[string]*schema.Schema{
 			"team_id": {
 				Type:         schema.TypeString,
@@ -189,21 +197,25 @@ func resourceGithubTeamMembershipImport(d *schema.ResourceData, meta interface{}
 	return []*schema.ResourceData{d}, nil
 }
 
-func getTeamAndUser(teamIDString string, userIDString string, org *Organization) (int64, int64, string, error) {
-	teamID, err := strconv.ParseInt(teamIDString, 10, 64)
+func getTeamAndUser(teamIDString string, userIDString string, org *Organization) (teamID, userID int64, username string, err error) {
+	teamID, err = strconv.ParseInt(teamIDString, 10, 64)
 	if err != nil {
-		return 0, 0, "", unconvertibleIdErr(teamIDString, err)
+		err = unconvertibleIdErr(teamIDString, err)
+		return
 	}
 
-	userID, err := strconv.ParseInt(userIDString, 10, 64)
+	userID, err = strconv.ParseInt(userIDString, 10, 64)
 	if err != nil {
-		return 0, 0, "", unconvertibleIdErr(userIDString, err)
+		err = unconvertibleIdErr(userIDString, err)
+		return
 	}
+
 	username, ok := org.UserMap.GetUsername(userID, org.client)
 	if !ok {
 		log.Printf("[DEBUG] Unable to obtain user %d from cache", userID)
-		return 0, 0, "", fmt.Errorf("Unable to get GitHub user %d", userID)
+		err = fmt.Errorf("Unable to get GitHub user %d", userID)
+		return
 	}
 
-	return teamID, userID, username, nil
+	return
 }
